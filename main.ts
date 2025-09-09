@@ -6,6 +6,8 @@ import { Input } from "./engine/Input";
 
 class GameManager extends GameObject {
   private color = "black";
+  // Track previous mouse state for debouncing
+  private _mouseWasDown: boolean = false;
 
   update(dt: number, input: Input): void {
     if(!hasStarted && input.mouseDown)
@@ -14,9 +16,27 @@ class GameManager extends GameObject {
       timer.running = true;
     }
 
+    if(restarted) {
+      deck.showQuestion = false;
+    }
+
+    // Only allow turn change on mouseDown if mouse was previously up (debounce)
+    if (deck.showQuestion && input.mouseDown && !restarted && !this._mouseWasDown) {
+      if (timer.playerTurn == 1) timer.playerTurn = 2;
+      else if (timer.playerTurn == 2) timer.playerTurn = 1;
+      this._mouseWasDown = true;
+    }
+    if (!input.mouseDown) {
+      this._mouseWasDown = false;
+    }
+
     if(gameOver.visible && input.mouseDown) restarted = true;
 
-    if(restarted) restarted = false;
+    if (restarted) {
+      setTimeout(() => {
+      restarted = false;
+      }, 1000);
+    }
   }
 
   draw(renderer: Renderer): void {
@@ -26,13 +46,15 @@ class GameManager extends GameObject {
 
 class RoundTimer extends GameObject {
   private color = "black";
-  public timeLeft: number = 60; // seconds
-  private totalTime: number = 60; // seconds
+  public p1_timeLeft: number = 60; // seconds
+  public p2_timeLeft: number = 60; // seconds
+  public totalTime: number = 60; // seconds
   private seconds: string = "0";
   public running: boolean = true;
+  public playerTurn: number = 1; // 1 or 2
 
   update(dt: number, input: Input): void {
-    if(this.timeLeft <= 0)
+    if(this.p1_timeLeft <= 0 || this.p2_timeLeft <= 0)
     {
       this.running = false;
       gameOver.visible = true;
@@ -40,13 +62,19 @@ class RoundTimer extends GameObject {
 
     if(restarted)
     {
-      this.timeLeft = this.totalTime;
+      this.p1_timeLeft = this.totalTime;
+      this.p2_timeLeft = this.totalTime;
       this.running = true;
     }
 
+    if(this.playerTurn == 1) this.seconds = this.p1_timeLeft.toFixed(0);
+    if(this.playerTurn == 2) this.seconds = this.p2_timeLeft.toFixed(0);
+
     if(!this.running) return;
-    this.timeLeft -= dt;
-    this.seconds = this.timeLeft.toFixed(0);
+    if(this.playerTurn == 1) this.p1_timeLeft -= dt;
+    if(this.playerTurn == 2) this.p2_timeLeft -= dt;
+
+
   }
 
   draw(renderer: Renderer): void {
@@ -81,6 +109,9 @@ class QuestionDeck extends GameObject {
   y: number = 50;
   width: number = 100;
   height: number = 150;
+
+  private clickSound: HTMLAudioElement = new Audio("assets/blip.mav");
+  private sprite: HTMLImageElement;
 
   private color = "#9112BC";
   private questions: string[] = [
@@ -135,6 +166,8 @@ class QuestionDeck extends GameObject {
     this.y = y;
     this.width = w;
     this.height = h;
+    this.sprite = new Image();
+    this.sprite.src = "assets/guess_card.png";
   }
 
   // 🟪 Esto revisa si un punto (click) cae dentro del rectángulo del mazo
@@ -147,14 +180,19 @@ class QuestionDeck extends GameObject {
     );
   }
 
+  public showQuestion: boolean = false;
+  private canClick: boolean = true;
+
   // 🔹 Lógica que se ejecuta en cada frame
   update(dt: number, input: Input): void {
-    if (input.mouseDown) {
-      if (this.containsPoint(input.mouseX, input.mouseY)) {
-        console.log("¡Click sobre el mazo!");
-        this.drawRandomQuestion();
-      }
+    if (input.mouseDown && this.canClick) {
+      this.drawRandomQuestion();
+      this.showQuestion = true;
+      this.clickSound.play();
+      this.canClick = false; // Evitar múltiples clicks en un solo clic
     }
+
+    if(restarted) this.canClick = true;
   }
 
   // 🔹 Mostrar una pregunta aleatoria
@@ -165,15 +203,42 @@ class QuestionDeck extends GameObject {
   }
 
   draw(renderer: Renderer): void {
+    if(!this.showQuestion || gameOver.visible) return;
     // 🟪 Dibujar el rectángulo del mazo
-    renderer.drawRect(this.x, this.y, this.width, this.height, this.color);
-    // 🟪 Dibujar el texto de la pregunta actual
-    const textX = this.x + 10;
-    const textY = this.y + this.height / 2;
-    renderer.drawText(this.currentQuestion, textX, textY, "black");
+    if (this.sprite.complete) {
+      const canvasWidth = renderer.ctx.canvas.width;
+      const canvasHeight = renderer.ctx.canvas.height;
+      const centerX = (canvasWidth - this.width) / 2;
+      const centerY = (canvasHeight - this.height) / 2;
+      renderer.drawImage(this.sprite, centerX, centerY, this.width, this.height);
+      // Update deck position so text also centers
+      this.x = centerX;
+      this.y = centerY;
+    }
+    // 🟪 Dibujar el texto centrado
+    const font = "20px Arial"; // mismo que en Renderer
+    const textWidth = renderer.measureText(this.currentQuestion, font);
+
+    const textX = this.x + (this.width - textWidth) / 2; // centrar horizontal
+
+    renderer.drawText(this.currentQuestion, textX, this.y - 10, "black");
   }
 }
 
+class Player extends GameObject {
+  private color = "green";
+
+  update(dt: number, input: Input) {
+
+  }
+
+  draw(renderer: Renderer) {
+    if(timer.playerTurn == 1)
+      renderer.drawText("Player 1's Turn", 50, 20, this.color);
+    else if(timer.playerTurn == 2)
+      renderer.drawText("Player 2's Turn", 50, 20, this.color);
+  }
+}
 
 /*class TestBox extends GameObject {
   private color = "blue";
@@ -201,7 +266,16 @@ const game = new Game("gameCanvas");
 const timer = new RoundTimer(10, 30);
 const gameOver = new GameOverScreen(300, 250);
 const manager = new GameManager(300, 50);
+const deck = new QuestionDeck(50, 50, 150, 200);
+const player = new Player(10, 20);
 //const box = new TestBox(100, 100);
 game.addObject(timer); 
 game.addObject(gameOver);
 game.addObject(manager);
+game.addObject(deck);
+game.addObject(player);
+
+//stops the timer and sets it to the initial time to begin the match
+timer.running = false;
+timer.p1_timeLeft = timer.totalTime;
+timer.p2_timeLeft = timer.totalTime;
