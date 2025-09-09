@@ -1,0 +1,4 @@
+1.sacando una carta que contiene una consigna con la que se iniciara el juego
+por ejemplo: peliculas donde hayan bebes, peliculas de comedia, etc.
+2.cada jugador tiene un tiempo para contestar (1m c\u), una vez haya contestado, el jugador debe tocar un boton que hace pasar el mando al otro jugador, el cual debe hacer lo mismo.
+3.El tiempo solo transcurre mientras el jugador actual tenga el mando, es decir, si el jugador 1 toca el boton con 45s, el tiempo se congela ahi, y pasa al otro jugador con su tiempo.
